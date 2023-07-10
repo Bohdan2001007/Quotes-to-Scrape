@@ -14,29 +14,33 @@ class QuoteScraper:
         self.output_file_jsonl = output_file_jsonl
         self.output_file_txt = output_file_txt
 
+    def fetch_page(self, url):
+        response = requests.get(url)
+        return BeautifulSoup(response.text, 'html.parser')
+
+    def extract_quote_info(self, quote_div):
+        text = quote_div.find('span', class_='text').get_text(strip=True)
+        text = text.replace('\u201c', '').replace('\u201d', '')
+        author = quote_div.find('small', class_='author').get_text(strip=True)
+        tags = [tag.get_text(strip=True) for tag in quote_div.find('div', class_='tags').find_all('a')]
+        return {"text": text, "author": author, "tags": tags}
+
+    def write_to_files(self, quote_dict):
+        quote_json = json.dumps(quote_dict, indent=4) + ",\n"
+        with open(self.output_file_jsonl, 'a') as jsonl_file:
+            jsonl_file.write(quote_json + '\n')
+        with open(self.output_file_txt, 'a') as txt_file:
+            txt_file.write(quote_json + '\n')
+
     def parse_page(self):
         while True:
             url = f"{self.url}{self.page_num}"
-            response = requests.get(url)
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = self.fetch_page(url)
             quotes_divs = soup.find_all('div', class_='quote')
 
             for quote_div in quotes_divs:
-                text = quote_div.find('span', class_='text').get_text(strip=True)
-                text = text.replace('\u201c', '').replace('\u201d', '')
-
-                author = quote_div.find('small', class_='author').get_text(strip=True)
-
-                tags = [tag.get_text(strip=True) for tag in quote_div.find('div', class_='tags').find_all('a')]
-
-                quote_dict = {"text": text, "author": author, "tags": tags}
-                quote_json = json.dumps(quote_dict, indent=4) + ",\n"
-
-                with open(self.output_file_jsonl, 'a') as jsonl_file:
-                    jsonl_file.write(quote_json + '\n')
-
-                with open(self.output_file_txt, 'a') as txt_file:
-                    txt_file.write(f"Text: {text}\nAuthor: {author}\nTags: {', '.join(tags)}\n\n")
+                quote_dict = self.extract_quote_info(quote_div)
+                self.write_to_files(quote_dict)
 
             if soup.find(class_='next') is None:
                 break
@@ -48,10 +52,7 @@ input_url = os.getenv('INPUT_URL')
 output_file_jsonl = os.getenv('OUTPUT_FILE_JSONL')
 output_file_txt = os.getenv('OUTPUT_FILE_TXT')
 
-
 scraper = QuoteScraper(input_url, output_file_jsonl, output_file_txt)
 scraper.parse_page()
 
-with open(output_file_jsonl, 'r') as jsonl_file, open(output_file_txt, 'w') as txt_file:
-    quotes = jsonl_file.readlines()
-    txt_file.writelines(quotes)
+
